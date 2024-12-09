@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
+#include "nvme_zns.h"
 #include "nvmev.h"
 #include "ssd.h"
 #include "zns_ftl.h"
@@ -227,6 +228,61 @@ static uint32_t __zmgmt_send_flush_explicit_zrwa(struct zns_ftl *zns_ftl, uint64
 	return status;
 }
 
+static uint32_t __zmgmt_change_cell_mode_into_slc(struct zns_ftl *zns_ftl, uint64_t zid) {
+	struct zone_descriptor *zone_descs = zns_ftl->zone_descs;
+	enum zone_state cur_state = zone_descs[zid].state;
+	uint32_t cell_type = zone_cell_type(zns_ftl, zid);
+	uint32_t status = NVME_SC_SUCCESS;
+	
+	switch (cur_state) {
+	case ZONE_STATE_EMPTY:
+		if (cell_type == SLC) {
+			// no action	
+		} else if (cell_type == QLC) {
+			zone_descs[zid].zone_capacity /= 4;
+			zone_descs[zid].rsvd[0] = SLC;
+			
+			NVMEV_ASSERT((BYTE_TO_LBA(zns_ftl->zp.zone_size) % 4 == 0));
+			NVMEV_ASSERT((zone_descs[zid].zone_capacity == BYTE_TO_LBA(zns_ftl->zp.zone_size) / 4));
+		} else {
+			status = NVME_SC_ZNS_INVALID_TRANSITION;
+		}
+		break;
+	default:
+		status = NVME_SC_ZNS_INVALID_TRANSITION;
+		break;
+	}
+
+	return status;
+}
+
+static uint32_t __zmgmt_change_cell_mode_into_qlc(struct zns_ftl *zns_ftl, uint64_t zid) {
+	struct zone_descriptor *zone_descs = zns_ftl->zone_descs;
+	enum zone_state cur_state = zone_descs[zid].state;
+	uint32_t cell_type = zone_cell_type(zns_ftl, zid);
+	uint32_t status = NVME_SC_SUCCESS;
+
+	switch (cur_state) {
+	case ZONE_STATE_EMPTY:
+		if (cell_type == SLC) {
+			zone_descs[zid].zone_capacity *= 4;
+			zone_descs[zid].rsvd[0] = QLC;
+			
+			NVMEV_ASSERT(zone_descs[zid].zone_capacity == BYTE_TO_LBA(zns_ftl->zp.zone_size));
+		} else if (cell_type == QLC) {
+			// no action	
+		} else {
+			status = NVME_SC_ZNS_INVALID_TRANSITION;
+		}
+		break;
+	default:
+		status = NVME_SC_ZNS_INVALID_TRANSITION;
+		break;
+	}
+
+	return status;
+}
+
 static uint32_t __zmgmt_send(struct zns_ftl *zns_ftl, uint64_t slba, uint32_t action,
 			     uint32_t option)
 {
@@ -251,6 +307,12 @@ static uint32_t __zmgmt_send(struct zns_ftl *zns_ftl, uint64_t slba, uint32_t ac
 		break;
 	case ZSA_FLUSH_EXPL_ZRWA:
 		status = __zmgmt_send_flush_explicit_zrwa(zns_ftl, slba);
+		break;
+	case ZSA_TO_SLC:
+		status = __zmgmt_change_cell_mode_into_slc(zns_ftl, zid);
+		break;
+	case ZSA_TO_QLC:
+		status = __zmgmt_change_cell_mode_into_qlc(zns_ftl, zid);
 		break;
 	}
 

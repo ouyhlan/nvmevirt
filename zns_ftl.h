@@ -3,11 +3,15 @@
 #ifndef _NVMEVIRT_ZNS_FTL_H
 #define _NVMEVIRT_ZNS_FTL_H
 
+#include "ssd.h"
 #include <linux/types.h>
 #include "nvmev.h"
 #include "nvme_zns.h"
+#include "ssd_config.h"
 
 #define NVMEV_ZNS_DEBUG(string, args...) //printk(KERN_INFO "%s: " string, NVMEV_DRV_NAME, ##args)
+
+enum { SLC, QLC, CELL_TYPE_COUNT };
 
 // Zoned Namespace Command Set Specification Revision 1.1a
 struct znsparams {
@@ -34,6 +38,7 @@ struct zone_resource_info {
 
 struct zns_ftl {
 	struct ssd *ssd;
+	struct ssd *cell_related_ssd[CELL_TYPE_COUNT];
 
 	struct znsparams zp;
 	struct zone_resource_info res_infos[RES_TYPE_COUNT];
@@ -86,6 +91,23 @@ static inline void change_zone_state(struct zns_ftl *zns_ftl, uint32_t zid, enum
 	zns_ftl->zone_descs[zid].state = state;
 }
 
+static inline uint32_t zone_cell_type(struct zns_ftl *zns_ftl, uint32_t zid)
+{
+	return zns_ftl->zone_descs[zid].rsvd[0];
+}
+
+static inline struct ssdparams* zone_ssdparams(struct zns_ftl *zns_ftl, uint32_t zid)
+{
+	uint32_t cell_type = zone_cell_type(zns_ftl, zid);
+	return &zns_ftl->cell_related_ssd[cell_type]->sp;
+}
+
+static inline struct ssd* zone_ssd(struct zns_ftl *zns_ftl, uint32_t zid)
+{
+	uint32_t cell_type = zone_cell_type(zns_ftl, zid);
+	return zns_ftl->cell_related_ssd[cell_type];
+}
+
 static inline uint32_t lpn_to_zone(struct zns_ftl *zns_ftl, uint64_t lpn)
 {
 	return (lpn) / (zns_ftl->zp.zone_size / zns_ftl->ssd->sp.pgsz);
@@ -108,7 +130,8 @@ static inline uint64_t zone_to_slba(struct zns_ftl *zns_ftl, uint32_t zid)
 
 static inline uint64_t zone_to_elba(struct zns_ftl *zns_ftl, uint32_t zid)
 {
-	return zone_to_slba(zns_ftl, zid + 1) - 1;
+	uint64_t zone_capacity = zns_ftl->zone_descs[zid].zone_capacity;
+	return zone_to_slba(zns_ftl, zid) + zone_capacity / zns_ftl->ssd->sp.secsz - 1;
 }
 
 static inline uint64_t zone_to_elpn(struct zns_ftl *zns_ftl, uint32_t zid)

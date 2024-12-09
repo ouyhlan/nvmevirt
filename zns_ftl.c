@@ -37,6 +37,7 @@ static void __init_descriptor(struct zns_ftl *zns_ftl)
 		zone_descs[i].wp = zslba;
 		zslba += BYTE_TO_LBA(zone_size);
 		zone_descs[i].zone_capacity = BYTE_TO_LBA(zone_size);
+		zone_descs[i].rsvd[0] = QLC; // rsvd[0] use for cell mode
 
 		if (zrwa_buffer_size)
 			buffer_init(&(zns_ftl->zrwa_buffer[i]), zrwa_buffer_size);
@@ -81,6 +82,48 @@ static void __init_resource(struct zns_ftl *zns_ftl)
 	};
 }
 
+static void __init_cell_resource(struct zns_ftl *zns_ftl, struct ssd *ssd) 
+{
+	struct ssdparams sp;
+	struct ssdparams *slc_sp;
+	struct ssdparams *qlc_sp;
+	uint32_t i;
+	
+	for (i = 0; i < CELL_TYPE_COUNT; i++) {
+		zns_ftl->cell_related_ssd[i] = kmemdup(ssd, sizeof(struct ssd), GFP_KERNEL);
+	}
+
+	sp = ssd->sp;
+
+	// slc related
+	slc_sp = &zns_ftl->cell_related_ssd[SLC]->sp;
+	slc_sp->cell_mode = CELL_MODE_SLC;
+	slc_sp->pgs_per_oneshotpg = sp.pgs_per_oneshotpg / 4; // ONESHOT_PAGE_SIZE / 4 / (sp->pgsz)
+	slc_sp->flashpgs_per_blk = sp.oneshotpgs_per_blk;
+	slc_sp->pgs_per_blk = slc_sp->pgs_per_oneshotpg * slc_sp->oneshotpgs_per_blk;
+	slc_sp->pg_4kb_rd_lat = NAND_READ_LATENCY_SLC;
+	slc_sp->pg_rd_lat = NAND_READ_LATENCY_SLC;
+	slc_sp->pg_wr_lat = NAND_PROG_LATENCY_SLC;
+	
+	/* calculated values */
+	slc_sp->secs_per_blk = slc_sp->secs_per_pg * slc_sp->pgs_per_blk;
+	slc_sp->secs_per_pl = slc_sp->secs_per_blk * slc_sp->blks_per_pl;
+	slc_sp->secs_per_lun = slc_sp->secs_per_pl * slc_sp->pls_per_lun;
+	slc_sp->secs_per_ch = slc_sp->secs_per_lun * slc_sp->luns_per_ch;
+	slc_sp->tt_secs = slc_sp->secs_per_ch * slc_sp->nchs;
+
+	slc_sp->pgs_per_pl = slc_sp->pgs_per_blk * slc_sp->blks_per_pl;
+	slc_sp->pgs_per_lun = slc_sp->pgs_per_pl * slc_sp->pls_per_lun;
+	slc_sp->pgs_per_ch = slc_sp->pgs_per_lun * slc_sp->luns_per_ch;
+	slc_sp->tt_pgs = slc_sp->pgs_per_ch * slc_sp->nchs;
+
+	// qlc related
+	qlc_sp = &zns_ftl->cell_related_ssd[QLC]->sp;
+	qlc_sp->pg_4kb_rd_lat = NAND_READ_LATENCY_QLC;
+	qlc_sp->pg_rd_lat = NAND_READ_LATENCY_QLC;
+	qlc_sp->pg_wr_lat = NAND_PROG_LATENCY_QLC;
+}
+
 static void zns_init_params(struct znsparams *zpp, struct ssdparams *spp, uint64_t capacity)
 {
 	*zpp = (struct znsparams){
@@ -118,6 +161,7 @@ static void zns_init_ftl(struct zns_ftl *zns_ftl, struct znsparams *zpp, struct 
 
 	__init_descriptor(zns_ftl);
 	__init_resource(zns_ftl);
+	__init_cell_resource(zns_ftl, ssd);
 }
 
 void zns_init_namespace(struct nvmev_ns *ns, uint32_t id, uint64_t size, void *mapped_addr,
@@ -156,11 +200,18 @@ void zns_init_namespace(struct nvmev_ns *ns, uint32_t id, uint64_t size, void *m
 
 void zns_remove_namespace(struct nvmev_ns *ns)
 {
+	uint32_t i;
 	struct zns_ftl *zns_ftl = (struct zns_ftl *)ns->ftls;
+	
 
 	ssd_remove(zns_ftl->ssd);
 
 	__remove_descriptor(zns_ftl);
+
+	for (i = 0; i < CELL_TYPE_COUNT; i++) {
+		kfree(zns_ftl->cell_related_ssd[i]);
+	}
+
 	kfree(zns_ftl->ssd);
 	kfree(zns_ftl);
 

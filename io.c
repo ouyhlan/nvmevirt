@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
+#include "nvme.h"
 #include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/ktime.h>
@@ -610,6 +611,12 @@ static int nvmev_io_worker(void *data)
 						__do_perform_io(w->sqid, w->sq_entry);
 					}
 #else 
+					struct nvmev_submission_queue *sq = nvmev_vdev->sqes[w->sqid];
+					struct nvme_rw_command *cmd = &sq_entry(w->sq_entry).rw;
+					if (cmd->opcode == nvme_cmd_zone_append) {
+						w->result0 = cmd->slba & 0x00000000FFFFFFFF;
+						w->result1 = cmd->slba >> 32;
+					}
 					__do_perform_io(w->sqid, w->sq_entry);
 #endif
 				}

@@ -165,9 +165,8 @@ struct ssdparams {
 	int write_unit_size;
 	bool write_early_completion;
 
-	int pg_4kb_rd_lat
-		[MAX_CELL_TYPES]; /* NAND page 4KB read latency in nanoseconds. sensing time (half tR) */
-	int pg_rd_lat[MAX_CELL_TYPES]; /* NAND page read latency in nanoseconds. sensing time (tR) */
+	int pg_4kb_rd_lat; /* NAND page 4KB read latency in nanoseconds. sensing time (half tR) */
+	int pg_rd_lat; /* NAND page read latency in nanoseconds. sensing time (tR) */
 	int pg_wr_lat; /* NAND page program latency in nanoseconds. pgm time (tPROG)*/
 	int blk_er_lat; /* NAND block erase latency in nanoseconds. erase time (tERASE) */
 	int max_ch_xfer_size;

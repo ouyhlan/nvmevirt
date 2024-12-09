@@ -150,6 +150,8 @@ enum zone_send_action {
 	ZSA_OFFLINE_ZONE,
 	ZSA_SET_ZONE_DESC_EXT = 0x10,
 	ZSA_FLUSH_EXPL_ZRWA = 0x11,
+	ZSA_TO_SLC = 0x12,
+	ZSA_TO_QLC = 0x13
 };
 
 // zone management send command

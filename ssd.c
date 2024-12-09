@@ -108,12 +108,8 @@ void ssd_init_params(struct ssdparams *spp, uint64_t capacity, uint32_t nparts)
 
 	spp->write_unit_size = WRITE_UNIT_SIZE;
 
-	spp->pg_4kb_rd_lat[CELL_TYPE_LSB] = NAND_4KB_READ_LATENCY_LSB;
-	spp->pg_4kb_rd_lat[CELL_TYPE_MSB] = NAND_4KB_READ_LATENCY_MSB;
-	spp->pg_4kb_rd_lat[CELL_TYPE_CSB] = NAND_4KB_READ_LATENCY_CSB;
-	spp->pg_rd_lat[CELL_TYPE_LSB] = NAND_READ_LATENCY_LSB;
-	spp->pg_rd_lat[CELL_TYPE_MSB] = NAND_READ_LATENCY_MSB;
-	spp->pg_rd_lat[CELL_TYPE_CSB] = NAND_READ_LATENCY_CSB;
+	spp->pg_4kb_rd_lat = NAND_4KB_READ_LATENCY_LSB;
+	spp->pg_rd_lat = NAND_READ_LATENCY_LSB;
 	spp->pg_wr_lat = NAND_PROG_LATENCY;
 	spp->blk_er_lat = NAND_ERASE_LATENCY;
 	spp->max_ch_xfer_size = MAX_CH_XFER_SIZE;
@@ -370,7 +366,6 @@ uint64_t ssd_advance_nand(struct ssd *ssd, struct nand_cmd *ncmd)
 	struct nand_lun *lun;
 	struct ssd_channel *ch;
 	struct ppa *ppa = ncmd->ppa;
-	uint32_t cell;
 	NVMEV_DEBUG(
 		"SSD: %p, Enter stime: %lld, ch %d lun %d blk %d page %d command %d ppa 0x%llx\n",
 		ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.pg, c, ppa->ppa);
@@ -383,7 +378,6 @@ uint64_t ssd_advance_nand(struct ssd *ssd, struct nand_cmd *ncmd)
 	spp = &ssd->sp;
 	lun = get_lun(ssd, ppa);
 	ch = get_ch(ssd, ppa);
-	cell = get_cell(ssd, ppa);
 	remaining = ncmd->xfer_size;
 
 	switch (c) {
@@ -392,9 +386,9 @@ uint64_t ssd_advance_nand(struct ssd *ssd, struct nand_cmd *ncmd)
 		nand_stime = max(lun->next_lun_avail_time, cmd_stime);
 
 		if (ncmd->xfer_size == 4096) {
-			nand_etime = nand_stime + spp->pg_4kb_rd_lat[cell];
+			nand_etime = nand_stime + spp->pg_4kb_rd_lat;
 		} else {
-			nand_etime = nand_stime + spp->pg_rd_lat[cell];
+			nand_etime = nand_stime + spp->pg_rd_lat;
 		}
 
 		/* read: then data transfer through channel */
